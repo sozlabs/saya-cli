@@ -20,3 +20,8 @@ Before opening a PR, ensure all changes keep `saya-cli` a thin client:
 - New commands must route through transport modules.
 - Any contract fields must come from `soz-saya` schemas/OpenAPI, not invented in CLI.
 - Keep secrets out of logs.
+- Respect DoD 1/2 config contract:
+  - flags/env/file/default precedence,
+  - OS-safe config/credentials paths only,
+  - non-interactive behavior must remain predictable.
+- Debug output must always pass through redaction; never log full Authorization/refresh/cookie values.
