@@ -25,3 +25,8 @@ Before opening a PR, ensure all changes keep `saya-cli` a thin client:
   - OS-safe config/credentials paths only,
   - non-interactive behavior must remain predictable.
 - Debug output must always pass through redaction; never log full Authorization/refresh/cookie values.
+- Respect DoD 3/4 auth-session contract:
+  - `chat` must pass Authorization only via secure token source,
+  - no token value in logs/errors,
+  - resume flow must honor `conversation_id` and `channel_id=terminal` default.
+- Runtime code must avoid `unwrap`/`expect` and keep error handling explicit.

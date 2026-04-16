@@ -1,14 +1,18 @@
 use crate::config::{CliConfig, OutputFormat};
+use crate::contracts::ConversationContext;
 use crate::credentials::Credentials;
-use crate::transport::SayaTransport;
+use crate::transport::{ChatRequest, SayaTransport};
 
 fn render(config: &CliConfig, command: &str, payload: &str) -> String {
+    let payload_json = match serde_json::to_string(payload) {
+        Ok(value) => value,
+        Err(_) => "\"\"".to_string(),
+    };
     match config.output_format {
         OutputFormat::Text => payload.to_string(),
         OutputFormat::Json => format!(
             "{{\"command\":\"{}\",\"ok\":true,\"output\":{}}}",
-            command,
-            serde_json::to_string(payload).unwrap_or_else(|_| "\"\"".to_string())
+            command, payload_json
         ),
     }
 }
@@ -30,16 +34,33 @@ pub fn run_chat(
     transport: &dyn SayaTransport,
     config: &CliConfig,
     message: &str,
-    credentials: &Credentials,
+    credentials: &mut Credentials,
 ) -> Result<String, String> {
-    let out = transport.chat(
-        &config.base_url,
-        message,
-        config.timeout,
-        credentials.access_token.as_deref(),
-        config.debug,
-    )?;
-    Ok(render(config, "chat", &out))
+    if credentials.access_token.is_none() {
+        return Err("missing access token: set credentials token before chat".to_string());
+    }
+    let conversation_id = match &config.conversation_id {
+        Some(value) => Some(value.as_str()),
+        None => credentials.conversation_id.as_deref(),
+    };
+    let context = ConversationContext {
+        session_id: config.session_id.clone(),
+        tenant_id: config.tenant_id.clone(),
+        actor_id: config.actor_id.clone(),
+        channel_id: config.channel_id.clone(),
+    };
+    let request = ChatRequest {
+        base_url: config.base_url.clone(),
+        message: message.to_string(),
+        conversation_id: conversation_id.map(|value| value.to_string()),
+        context,
+        timeout: config.timeout,
+        auth_token: credentials.access_token.clone(),
+        debug: config.debug,
+    };
+    let out = transport.chat(&request)?;
+    credentials.conversation_id = Some(out.conversation_id.clone());
+    Ok(render(config, "chat", &out.text))
 }
 
 #[cfg(test)]
@@ -65,24 +86,34 @@ mod tests {
         ) -> Result<String, String> {
             self.calls
                 .lock()
-                .expect("lock poisoned")
+                .map_err(|_| "lock poisoned".to_string())?
                 .push(format!("health:{base_url}"));
             Ok("ok".to_string())
         }
 
-        fn chat(
-            &self,
-            base_url: &str,
-            message: &str,
-            _timeout: Duration,
-            _auth_token: Option<&str>,
-            _debug: bool,
-        ) -> Result<String, String> {
+        fn chat(&self, request: &ChatRequest) -> Result<crate::transport::ChatResult, String> {
             self.calls
                 .lock()
-                .expect("lock poisoned")
-                .push(format!("chat:{base_url}:{message}"));
-            Ok("done".to_string())
+                .map_err(|_| "lock poisoned".to_string())?
+                .push(format!(
+                    "chat:{}:{}:{}:{}:{}",
+                    request.base_url,
+                    request.message,
+                    request
+                        .conversation_id
+                        .as_deref()
+                        .map_or("none", |value| value),
+                    request.context.channel_id,
+                    if request.auth_token.is_some() {
+                        "auth"
+                    } else {
+                        "noauth"
+                    }
+                ));
+            Ok(crate::transport::ChatResult {
+                conversation_id: "generated-cid".to_string(),
+                text: "done".to_string(),
+            })
         }
     }
 
@@ -94,28 +125,93 @@ mod tests {
             non_interactive: false,
             debug: false,
             config_dir: std::path::PathBuf::from(".saya"),
+            conversation_id: None,
+            session_id: "s".to_string(),
+            tenant_id: "t".to_string(),
+            actor_id: "u".to_string(),
+            channel_id: "terminal".to_string(),
         }
+    }
+
+    fn test_config_resume() -> CliConfig {
+        let mut cfg = test_config();
+        cfg.conversation_id = Some("resume-cid".to_string());
+        cfg
     }
 
     #[test]
     fn health_routes_through_transport() {
         let transport = MockTransport::default();
-        let result = run_health(&transport, &test_config()).expect("health should succeed");
+        let result = match run_health(&transport, &test_config()) {
+            Ok(value) => value,
+            Err(err) => panic!("{err}"),
+        };
         assert_eq!(result, "ok");
-        let calls = transport.calls.lock().expect("lock poisoned");
+        let calls = match transport.calls.lock() {
+            Ok(value) => value,
+            Err(_) => panic!("lock poisoned"),
+        };
         assert_eq!(calls.as_slice(), ["health:http://127.0.0.1:3010"]);
     }
 
     #[test]
     fn chat_routes_through_transport() {
         let transport = MockTransport::default();
-        let creds = Credentials {
+        let mut creds = Credentials {
             access_token: Some("secret".to_string()),
+            conversation_id: None,
         };
-        let result =
-            run_chat(&transport, &test_config(), "hello", &creds).expect("chat should succeed");
+        let result = match run_chat(&transport, &test_config(), "hello", &mut creds) {
+            Ok(value) => value,
+            Err(err) => panic!("{err}"),
+        };
         assert_eq!(result, "done");
-        let calls = transport.calls.lock().expect("lock poisoned");
-        assert_eq!(calls.as_slice(), ["chat:http://127.0.0.1:3010:hello"]);
+        let calls = match transport.calls.lock() {
+            Ok(value) => value,
+            Err(_) => panic!("lock poisoned"),
+        };
+        assert_eq!(
+            calls.as_slice(),
+            ["chat:http://127.0.0.1:3010:hello:none:terminal:auth"]
+        );
+        assert_eq!(creds.conversation_id.as_deref(), Some("generated-cid"));
+    }
+
+    #[test]
+    fn chat_uses_conversation_id_from_config_when_present() {
+        let transport = MockTransport::default();
+        let mut creds = Credentials {
+            access_token: Some("secret".to_string()),
+            conversation_id: Some("old-cid".to_string()),
+        };
+        let result = match run_chat(&transport, &test_config_resume(), "hello", &mut creds) {
+            Ok(value) => value,
+            Err(err) => panic!("{err}"),
+        };
+        assert_eq!(result, "done");
+        let calls = match transport.calls.lock() {
+            Ok(value) => value,
+            Err(_) => panic!("lock poisoned"),
+        };
+        assert_eq!(
+            calls.as_slice(),
+            ["chat:http://127.0.0.1:3010:hello:resume-cid:terminal:auth"]
+        );
+    }
+
+    #[test]
+    fn chat_fails_without_token() {
+        let transport = MockTransport::default();
+        let mut creds = Credentials {
+            access_token: None,
+            conversation_id: None,
+        };
+        let result = run_chat(&transport, &test_config(), "hello", &mut creds);
+        assert!(result.is_err());
+        let calls = match transport.calls.lock() {
+            Ok(value) => value,
+            Err(_) => panic!("lock poisoned"),
+        };
+        assert_eq!(calls.len(), 0);
     }
 }

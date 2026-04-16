@@ -4,7 +4,7 @@ pub fn should_debug(cli_debug: bool) -> bool {
     if cli_debug {
         return true;
     }
-    let rust_log = env::var("RUST_LOG").unwrap_or_default();
+    let rust_log = env::var("RUST_LOG").ok().map_or(String::new(), |value| value);
     rust_log.to_ascii_lowercase().contains("debug")
 }
 

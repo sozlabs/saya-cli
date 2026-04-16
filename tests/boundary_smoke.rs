@@ -1,7 +1,7 @@
 use saya_cli::commands::{run_chat, run_health};
 use saya_cli::config::{CliConfig, OutputFormat};
 use saya_cli::credentials::Credentials;
-use saya_cli::transport::SayaTransport;
+use saya_cli::transport::{ChatRequest, ChatResult, SayaTransport};
 use std::path::PathBuf;
 use std::sync::Mutex;
 use std::time::Duration;
@@ -15,24 +15,34 @@ impl SayaTransport for MockTransport {
     fn health(&self, base_url: &str, _timeout: Duration, _debug: bool) -> Result<String, String> {
         self.calls
             .lock()
-            .expect("lock poisoned")
+            .map_err(|_| "lock poisoned".to_string())?
             .push(format!("health:{base_url}"));
         Ok("ok".to_string())
     }
 
-    fn chat(
-        &self,
-        base_url: &str,
-        message: &str,
-        _timeout: Duration,
-        _auth_token: Option<&str>,
-        _debug: bool,
-    ) -> Result<String, String> {
+    fn chat(&self, request: &ChatRequest) -> Result<ChatResult, String> {
         self.calls
             .lock()
-            .expect("lock poisoned")
-            .push(format!("chat:{base_url}:{message}"));
-        Ok("done".to_string())
+            .map_err(|_| "lock poisoned".to_string())?
+            .push(format!(
+                "chat:{}:{}:{}:{}:{}",
+                request.base_url,
+                request.message,
+                request
+                    .conversation_id
+                    .as_deref()
+                    .map_or("none", |value| value),
+                request.context.channel_id,
+                if request.auth_token.is_some() {
+                    "auth"
+                } else {
+                    "noauth"
+                }
+            ));
+        Ok(ChatResult {
+            conversation_id: "generated".to_string(),
+            text: "done".to_string(),
+        })
     }
 }
 
@@ -44,26 +54,48 @@ fn test_config() -> CliConfig {
         non_interactive: true,
         debug: false,
         config_dir: PathBuf::from(".saya"),
+        conversation_id: None,
+        session_id: "s".to_string(),
+        tenant_id: "t".to_string(),
+        actor_id: "u".to_string(),
+        channel_id: "terminal".to_string(),
     }
 }
 
 #[test]
 fn health_uses_saya_transport_shape() {
     let transport = MockTransport::default();
-    let out = run_health(&transport, &test_config()).expect("health should succeed");
+    let out = match run_health(&transport, &test_config()) {
+        Ok(value) => value,
+        Err(err) => panic!("{err}"),
+    };
     assert_eq!(out, "ok");
-    let calls = transport.calls.lock().expect("lock poisoned");
+    let calls = match transport.calls.lock() {
+        Ok(value) => value,
+        Err(_) => panic!("lock poisoned"),
+    };
     assert_eq!(calls.as_slice(), ["health:http://127.0.0.1:3010"]);
 }
 
 #[test]
 fn chat_uses_transport_instead_of_agent_runtime() {
     let transport = MockTransport::default();
-    let creds = Credentials {
+    let mut creds = Credentials {
         access_token: Some("tok".to_string()),
+        conversation_id: None,
     };
-    let out = run_chat(&transport, &test_config(), "hello", &creds).expect("chat should succeed");
+    let out = match run_chat(&transport, &test_config(), "hello", &mut creds) {
+        Ok(value) => value,
+        Err(err) => panic!("{err}"),
+    };
     assert_eq!(out, "done");
-    let calls = transport.calls.lock().expect("lock poisoned");
-    assert_eq!(calls.as_slice(), ["chat:http://127.0.0.1:3010:hello"]);
+    let calls = match transport.calls.lock() {
+        Ok(value) => value,
+        Err(_) => panic!("lock poisoned"),
+    };
+    assert_eq!(
+        calls.as_slice(),
+        ["chat:http://127.0.0.1:3010:hello:none:terminal:auth"]
+    );
+    assert_eq!(creds.conversation_id.as_deref(), Some("generated"));
 }

@@ -1,7 +1,7 @@
 use clap::{Parser, Subcommand};
 use saya_cli::commands::{run_chat, run_health, run_version};
 use saya_cli::config::{CliConfig, ConfigFlags, OutputFormat};
-use saya_cli::credentials::load_credentials;
+use saya_cli::credentials::{load_credentials, save_credentials};
 use saya_cli::debug::{debug_log, should_debug};
 use saya_cli::transport::http::HttpTransport;
 
@@ -28,6 +28,21 @@ struct Cli {
     /// Enable debug transport logs with secret redaction
     #[arg(long, default_value_t = false)]
     debug: bool,
+
+    #[arg(long)]
+    conversation_id: Option<String>,
+
+    #[arg(long)]
+    session_id: Option<String>,
+
+    #[arg(long)]
+    tenant_id: Option<String>,
+
+    #[arg(long)]
+    actor_id: Option<String>,
+
+    #[arg(long)]
+    channel_id: Option<String>,
 
     #[command(subcommand)]
     command: Commands,
@@ -57,9 +72,14 @@ fn main() {
         output_format,
         non_interactive: cli.non_interactive,
         debug: cli.debug,
+        conversation_id: cli.conversation_id,
+        session_id: cli.session_id,
+        tenant_id: cli.tenant_id,
+        actor_id: cli.actor_id,
+        channel_id: cli.channel_id,
     });
     let debug_enabled = should_debug(config.debug);
-    let credentials = load_credentials(&config.config_dir);
+    let mut credentials = load_credentials(&config.config_dir);
 
     let transport = HttpTransport;
     debug_log(
@@ -83,12 +103,17 @@ fn main() {
                 std::process::exit(1);
             }
         },
-        Commands::Chat { message } => match run_chat(&transport, &config, &message, &credentials) {
-            Ok(output) => println!("{}", output),
-            Err(err) => {
-                eprintln!("{}", err);
-                std::process::exit(1);
+        Commands::Chat { message } => {
+            match run_chat(&transport, &config, &message, &mut credentials) {
+                Ok(output) => println!("{}", output),
+                Err(err) => {
+                    eprintln!("{}", err);
+                    std::process::exit(1);
+                }
             }
-        },
+        }
+    }
+    if let Err(err) = save_credentials(&config.config_dir, &credentials) {
+        eprintln!("failed to persist credentials: {}", err);
     }
 }

@@ -19,6 +19,11 @@ pub struct FileConfig {
     pub output_format: Option<OutputFormat>,
     pub non_interactive: Option<bool>,
     pub debug: Option<bool>,
+    pub conversation_id: Option<String>,
+    pub session_id: Option<String>,
+    pub tenant_id: Option<String>,
+    pub actor_id: Option<String>,
+    pub channel_id: Option<String>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -28,6 +33,11 @@ struct EnvConfig {
     output_format: Option<OutputFormat>,
     non_interactive: Option<bool>,
     debug: Option<bool>,
+    conversation_id: Option<String>,
+    session_id: Option<String>,
+    tenant_id: Option<String>,
+    actor_id: Option<String>,
+    channel_id: Option<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -37,6 +47,11 @@ pub struct ConfigFlags {
     pub output_format: Option<OutputFormat>,
     pub non_interactive: bool,
     pub debug: bool,
+    pub conversation_id: Option<String>,
+    pub session_id: Option<String>,
+    pub tenant_id: Option<String>,
+    pub actor_id: Option<String>,
+    pub channel_id: Option<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -47,6 +62,11 @@ pub struct CliConfig {
     pub non_interactive: bool,
     pub debug: bool,
     pub config_dir: PathBuf,
+    pub conversation_id: Option<String>,
+    pub session_id: String,
+    pub tenant_id: String,
+    pub actor_id: String,
+    pub channel_id: String,
 }
 
 fn parse_output(value: &str) -> Option<OutputFormat> {
@@ -86,33 +106,39 @@ impl CliConfig {
         let base_url = flags
             .base_url
             .or(env_config.base_url)
-            .or_else(|| file_config.as_ref().and_then(|c| c.base_url.clone()))
-            .unwrap_or_else(|| "http://127.0.0.1:3010".to_string());
+            .or_else(|| file_config.as_ref().and_then(|c| c.base_url.clone()));
+        let base_url = match base_url {
+            Some(value) => value,
+            None => "http://127.0.0.1:3010".to_string(),
+        };
         let timeout_ms = flags
             .timeout_ms
             .or(env_config.timeout_ms)
-            .or_else(|| file_config.as_ref().and_then(|c| c.timeout_ms))
-            .unwrap_or(30_000);
+            .or_else(|| file_config.as_ref().and_then(|c| c.timeout_ms));
+        let timeout_ms = timeout_ms.map_or(30_000, |value| value);
         let output_format = flags
             .output_format
             .or(env_config.output_format)
-            .or_else(|| file_config.as_ref().and_then(|c| c.output_format))
-            .unwrap_or(OutputFormat::Text);
+            .or_else(|| file_config.as_ref().and_then(|c| c.output_format));
+        let output_format = match output_format {
+            Some(value) => value,
+            None => OutputFormat::Text,
+        };
         let non_interactive = if flags.non_interactive {
             true
         } else {
-            env_config
+            let value = env_config
                 .non_interactive
-                .or_else(|| file_config.as_ref().and_then(|c| c.non_interactive))
-                .unwrap_or(false)
+                .or_else(|| file_config.as_ref().and_then(|c| c.non_interactive));
+            value.is_some_and(|v| v)
         };
         let debug = if flags.debug {
             true
         } else {
-            env_config
+            let value = env_config
                 .debug
-                .or_else(|| file_config.as_ref().and_then(|c| c.debug))
-                .unwrap_or(false)
+                .or_else(|| file_config.as_ref().and_then(|c| c.debug));
+            value.is_some_and(|v| v)
         };
         Self {
             base_url,
@@ -121,6 +147,30 @@ impl CliConfig {
             non_interactive,
             debug,
             config_dir,
+            conversation_id: flags
+                .conversation_id
+                .or(env_config.conversation_id)
+                .or_else(|| file_config.as_ref().and_then(|c| c.conversation_id.clone())),
+            session_id: flags
+                .session_id
+                .or(env_config.session_id)
+                .or_else(|| file_config.as_ref().and_then(|c| c.session_id.clone()))
+                .map_or("terminal-session".to_string(), |value| value),
+            tenant_id: flags
+                .tenant_id
+                .or(env_config.tenant_id)
+                .or_else(|| file_config.as_ref().and_then(|c| c.tenant_id.clone()))
+                .map_or("terminal-tenant".to_string(), |value| value),
+            actor_id: flags
+                .actor_id
+                .or(env_config.actor_id)
+                .or_else(|| file_config.as_ref().and_then(|c| c.actor_id.clone()))
+                .map_or("terminal-user".to_string(), |value| value),
+            channel_id: flags
+                .channel_id
+                .or(env_config.channel_id)
+                .or_else(|| file_config.as_ref().and_then(|c| c.channel_id.clone()))
+                .map_or("terminal".to_string(), |value| value),
         }
     }
 
@@ -142,6 +192,11 @@ impl CliConfig {
             debug: env::var("SAYA_DEBUG")
                 .ok()
                 .map(|value| value == "1" || value.eq_ignore_ascii_case("true")),
+            conversation_id: env::var("SAYA_CONVERSATION_ID").ok(),
+            session_id: env::var("SAYA_SESSION_ID").ok(),
+            tenant_id: env::var("SAYA_TENANT_ID").ok(),
+            actor_id: env::var("SAYA_ACTOR_ID").ok(),
+            channel_id: env::var("SAYA_CHANNEL_ID").ok(),
         };
         Self::from_sources(flags, env_config, file_config, config_dir)
     }
@@ -169,6 +224,11 @@ mod tests {
             output_format: None,
             non_interactive: false,
             debug: false,
+            conversation_id: None,
+            session_id: None,
+            tenant_id: None,
+            actor_id: None,
+            channel_id: None,
         }
     }
 
@@ -181,6 +241,11 @@ mod tests {
                 output_format: Some(OutputFormat::Json),
                 non_interactive: true,
                 debug: true,
+                conversation_id: Some("cid-flags".to_string()),
+                session_id: Some("s-flags".to_string()),
+                tenant_id: Some("t-flags".to_string()),
+                actor_id: Some("u-flags".to_string()),
+                channel_id: Some("terminal".to_string()),
             },
             EnvConfig::default(),
             None,
@@ -190,6 +255,11 @@ mod tests {
         assert_eq!(cfg.output_format, OutputFormat::Json);
         assert!(cfg.non_interactive);
         assert!(cfg.debug);
+        assert_eq!(cfg.conversation_id.as_deref(), Some("cid-flags"));
+        assert_eq!(cfg.session_id, "s-flags");
+        assert_eq!(cfg.tenant_id, "t-flags");
+        assert_eq!(cfg.actor_id, "u-flags");
+        assert_eq!(cfg.channel_id, "terminal");
     }
 
     #[test]
@@ -202,6 +272,11 @@ mod tests {
                 output_format: Some(OutputFormat::Json),
                 non_interactive: Some(true),
                 debug: Some(true),
+                conversation_id: Some("cid-1".to_string()),
+                session_id: Some("s1".to_string()),
+                tenant_id: Some("t1".to_string()),
+                actor_id: Some("u1".to_string()),
+                channel_id: Some("terminal".to_string()),
             },
             Some(FileConfig {
                 base_url: Some("http://file.example".to_string()),
@@ -209,6 +284,11 @@ mod tests {
                 output_format: Some(OutputFormat::Text),
                 non_interactive: Some(false),
                 debug: Some(false),
+                conversation_id: Some("cid-file".to_string()),
+                session_id: Some("s-file".to_string()),
+                tenant_id: Some("t-file".to_string()),
+                actor_id: Some("u-file".to_string()),
+                channel_id: Some("web".to_string()),
             }),
         );
         assert_eq!(cfg.base_url, "http://env.example");
@@ -216,6 +296,11 @@ mod tests {
         assert_eq!(cfg.output_format, OutputFormat::Json);
         assert!(cfg.non_interactive);
         assert!(cfg.debug);
+        assert_eq!(cfg.conversation_id.as_deref(), Some("cid-1"));
+        assert_eq!(cfg.session_id, "s1");
+        assert_eq!(cfg.tenant_id, "t1");
+        assert_eq!(cfg.actor_id, "u1");
+        assert_eq!(cfg.channel_id, "terminal");
     }
 
     #[test]
@@ -229,6 +314,11 @@ mod tests {
                 output_format: Some(OutputFormat::Json),
                 non_interactive: Some(true),
                 debug: Some(true),
+                conversation_id: Some("cid-file-only".to_string()),
+                session_id: Some("s-file-only".to_string()),
+                tenant_id: Some("t-file-only".to_string()),
+                actor_id: Some("u-file-only".to_string()),
+                channel_id: Some("terminal".to_string()),
             }),
         );
         assert_eq!(cfg.base_url, "http://file-only.example");
@@ -236,5 +326,10 @@ mod tests {
         assert_eq!(cfg.output_format, OutputFormat::Json);
         assert!(cfg.non_interactive);
         assert!(cfg.debug);
+        assert_eq!(cfg.conversation_id.as_deref(), Some("cid-file-only"));
+        assert_eq!(cfg.session_id, "s-file-only");
+        assert_eq!(cfg.tenant_id, "t-file-only");
+        assert_eq!(cfg.actor_id, "u-file-only");
+        assert_eq!(cfg.channel_id, "terminal");
     }
 }
