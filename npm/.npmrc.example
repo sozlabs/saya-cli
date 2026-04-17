@@ -1,0 +1,3 @@
+; Copy to `npm/wrapper/.npmrc` or `npm/packages/<platform>/.npmrc` only for local testing.
+; Prefer env var: NPM_TOKEN (CI sets NODE_AUTH_TOKEN via actions/setup-node).
+//registry.npmjs.org/:_authToken=${NPM_TOKEN}

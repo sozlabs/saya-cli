@@ -33,6 +33,34 @@ npx @sozlabs/saya-cli version
 
 If your OS or CPU is not in the supported set, npm installs the wrapper but no native package matches — build from source with Cargo (below).
 
+### Maintainers: local npm auth (`.env`)
+
+For `npm whoami` / manual `npm publish` tests, use a **granular token** with read/write on the `@sozlabs` scope only. Never commit secrets.
+
+1. Copy [`.env.example`](.env.example) to `.env` (already gitignored).
+2. Set `NPM_TOKEN=...` in `.env`.
+3. **One-time:** write the token into your user npm config (so `npm` works in any shell):
+
+```powershell
+# Windows PowerShell (built-in):
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/sync-npm-userconfig-from-env.ps1
+# Or PowerShell 7+ if installed:
+pwsh -NoProfile -File scripts/sync-npm-userconfig-from-env.ps1
+npm whoami
+```
+
+4. **Or** load `.env` into the **current** PowerShell session (must be dot-sourced), then run npm:
+
+```powershell
+cd saya-cli
+. ./scripts/load-env.ps1
+npm whoami
+```
+
+Optional: for a local `.npmrc` that reads the env var, see [`npm/.npmrc.example`](npm/.npmrc.example).
+
+CI uses the repository secret **`NPM_TOKEN`** (see [CONTRIBUTING.md](CONTRIBUTING.md) → Releases).
+
 ### Cargo (from repository)
 
 ```bash

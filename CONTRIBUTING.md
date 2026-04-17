@@ -22,6 +22,7 @@ Before opening a PR, ensure all changes keep `saya-cli` a thin client:
 - Bump `Cargo.toml` version and run `node npm/scripts/set-version.js X.Y.Z` so npm packages match.
 - Update [CHANGELOG.md](CHANGELOG.md); commit and push tag `vX.Y.Z`.
 - [`.github/workflows/release.yml`](.github/workflows/release.yml) builds native binaries, creates a GitHub Release with archives, and publishes `@sozlabs/saya-cli*` to npm when repository secret **`NPM_TOKEN`** is set (otherwise npm steps are skipped).
+- Local sanity check before tagging (optional): copy `.env.example` → `.env`, set `NPM_TOKEN`, run `pwsh -File scripts/load-env.ps1` then `npm whoami`. Revoke any token that was exposed outside your machine.
 
 ## Design Notes
 
