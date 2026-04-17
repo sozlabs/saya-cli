@@ -14,6 +14,14 @@ Before opening a PR, ensure all changes keep `saya-cli` a thin client:
 - Run `cargo test`
 - Run boundary checks:
   - `bash .ci/check-boundaries.sh`
+- Stream schema (when touching `stream_contract.rs`):
+  - `bash .ci/check-stream-contract.sh` (set `SOZ_SAYA_ROOT` for a live diff against soz-saya when available)
+
+## Releases
+
+- Bump `Cargo.toml` version and run `node npm/scripts/set-version.js X.Y.Z` so npm packages match.
+- Update [CHANGELOG.md](CHANGELOG.md); commit and push tag `vX.Y.Z`.
+- [`.github/workflows/release.yml`](.github/workflows/release.yml) builds native binaries, creates a GitHub Release with archives, and publishes `@sozlabs/saya-cli*` to npm when repository secret **`NPM_TOKEN`** is set (otherwise npm steps are skipped).
 
 ## Design Notes
 

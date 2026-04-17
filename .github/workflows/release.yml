@@ -1,0 +1,160 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            npm_dir: linux-x64
+          - runner: ubuntu-24.04-arm64
+            target: aarch64-unknown-linux-gnu
+            npm_dir: linux-arm64
+          - runner: windows-latest
+            target: x86_64-pc-windows-msvc
+            npm_dir: win32-x64
+          - runner: macos-latest
+            target: aarch64-apple-darwin
+            npm_dir: darwin-arm64
+          - runner: macos-13
+            target: x86_64-apple-darwin
+            npm_dir: darwin-x64
+
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cargo build
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Stage binary
+        shell: bash
+        run: |
+          mkdir -p "staging/${{ matrix.npm_dir }}"
+          if [[ "${{ matrix.target }}" == *windows* ]]; then
+            cp "target/${{ matrix.target }}/release/saya.exe" "staging/${{ matrix.npm_dir }}/saya.exe"
+          else
+            cp "target/${{ matrix.target }}/release/saya" "staging/${{ matrix.npm_dir }}/saya"
+            chmod +x "staging/${{ matrix.npm_dir }}/saya"
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.npm_dir }}
+          path: staging/${{ matrix.npm_dir }}
+
+  github_release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Version
+        id: ver
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Pack archives
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.ver.outputs.VERSION }}"
+          mkdir -p release-assets
+          for name in linux-x64 linux-arm64 win32-x64 darwin-arm64 darwin-x64; do
+            d="artifacts/${name}"
+            if [[ ! -d "$d" ]]; then
+              echo "warning: missing artifact dir ${d}"
+              continue
+            fi
+            if [[ -f "$d/saya.exe" ]]; then
+              (cd "$d" && zip -q "${GITHUB_WORKSPACE}/release-assets/saya-${name}-v${VERSION}.zip" saya.exe)
+            elif [[ -f "$d/saya" ]]; then
+              tar -czvf "${GITHUB_WORKSPACE}/release-assets/saya-${name}-v${VERSION}.tar.gz" -C "$d" saya
+            fi
+          done
+          ls -la release-assets/
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: release-assets/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  npm_publish:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Version from tag
+        id: ver
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Sync npm versions
+        run: node npm/scripts/set-version.js "${{ steps.ver.outputs.VERSION }}"
+
+      - name: Copy binaries into npm packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in linux-x64 linux-arm64 win32-x64 darwin-arm64 darwin-x64; do
+            mkdir -p "npm/packages/${name}/bin"
+            if [[ -f "artifacts/${name}/saya.exe" ]]; then
+              cp "artifacts/${name}/saya.exe" "npm/packages/${name}/bin/saya.exe"
+            elif [[ -f "artifacts/${name}/saya" ]]; then
+              cp "artifacts/${name}/saya" "npm/packages/${name}/bin/saya"
+              chmod +x "npm/packages/${name}/bin/saya"
+            else
+              echo "Missing binary for ${name}"
+              exit 1
+            fi
+          done
+
+      - name: Publish platform packages to npm
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          set -e
+          if [ -z "${NODE_AUTH_TOKEN:-}" ]; then
+            echo "NPM_TOKEN not set; skip npm publish"
+            exit 0
+          fi
+          for d in npm/packages/*/; do
+            (cd "$d" && npm publish --access public)
+          done
+
+      - name: Publish wrapper to npm
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ -z "${NODE_AUTH_TOKEN:-}" ]; then
+            echo "NPM_TOKEN not set; skip npm publish"
+            exit 0
+          fi
+          (cd npm/wrapper && npm publish --access public)

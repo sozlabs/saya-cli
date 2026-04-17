@@ -1,0 +1,15 @@
+{
+  "name": "@sozlabs/saya-cli-win32-x64",
+  "version": "0.1.0",
+  "description": "Native saya binary for Windows x64",
+  "license": "MIT",
+  "os": [
+    "win32"
+  ],
+  "cpu": [
+    "x64"
+  ],
+  "files": [
+    "bin/saya.exe"
+  ]
+}

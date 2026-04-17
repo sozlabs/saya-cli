@@ -10,16 +10,58 @@ Thin Rust CLI client for the **soz-saya** HTTP API. It performs transport only: 
 
 ## Requirements
 
-- Rust toolchain (edition 2021) with `cargo`.
+- **From crates:** Rust toolchain (edition 2021) with `cargo`.
+- **From npm:** Node.js 18+ (only for the `saya` shim; the heavy lifting is the native binary).
 - A running **soz-saya** instance (default base URL `http://127.0.0.1:3010`).
 
-## Build
+## Installation
+
+### npm (recommended for supported platforms)
+
+Published scope: **`@sozlabs/saya-cli`**. Platform-specific binaries are pulled in via `optionalDependencies` (macOS arm64/x64, Linux arm64/x64, Windows x64).
+
+```bash
+npm install -g @sozlabs/saya-cli
+saya version
+```
+
+Or without a global install:
+
+```bash
+npx @sozlabs/saya-cli version
+```
+
+If your OS or CPU is not in the supported set, npm installs the wrapper but no native package matches — build from source with Cargo (below).
+
+### Cargo (from repository)
+
+```bash
+git clone https://github.com/sozlabs/saya-cli.git
+cd saya-cli
+cargo build --release
+```
+
+The release binary is `target/release/saya` (on Windows, `target/release/saya.exe`). The Rust crate name is `saya_cli`; the executable name is `saya`.
+
+```bash
+cargo install --path .
+# puts `saya` on PATH (same as --path . in this repo)
+```
+
+### GitHub Releases
+
+On each `v*` tag, the **Release** workflow attaches per-platform archives (`saya-<platform>-vX.Y.Z.tar.gz` or `.zip`). Download, unpack, and place the binary on your `PATH`.
+
+## Versioning and breaking changes
+
+- Versions follow **semver** (`MAJOR.MINOR.PATCH`), kept in sync between `Cargo.toml` and all `npm/**/package.json` files when publishing a release.
+- Flag renames, removed env vars, or incompatible JSON output are **breaking** and bump the **MAJOR** version; see [CHANGELOG.md](CHANGELOG.md).
+
+## Build (development)
 
 ```bash
 cargo build --release
 ```
-
-The default release binary is `target/release/saya_cli` (crate package name `saya_cli`). The clap program name in `--help` is `saya`; you can rename or symlink the binary to `saya` if you prefer.
 
 ## Commands
 
@@ -169,6 +211,11 @@ npx tsx scripts/export-stream-schema.ts > ../saya-cli/schemas/stream_events.sche
 ```
 
 (or the equivalent `npx tsx -e "import { buildStreamJsonSchema } from './src/contracts.ts'; ..."`).
+
+## CI and releases
+
+- **CI** ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)): `fmt`, `clippy`, tests, boundary and stream-schema checks on every push/PR.
+- **Release** ([`.github/workflows/release.yml`](.github/workflows/release.yml)): on tag `v*`, cross-builds `saya` for supported targets, attaches archives to a GitHub Release, and publishes npm packages under `@sozlabs/` when `NPM_TOKEN` is configured on the repository.
 
 ## Contributing
 

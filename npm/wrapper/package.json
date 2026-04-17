@@ -1,0 +1,26 @@
+{
+  "name": "@sozlabs/saya-cli",
+  "version": "0.1.0",
+  "description": "Thin CLI for soz-saya (installs a native binary via optionalDependencies)",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sozlabs/saya-cli.git"
+  },
+  "bin": {
+    "saya": "bin/saya.js"
+  },
+  "files": [
+    "bin/saya.js"
+  ],
+  "optionalDependencies": {
+    "@sozlabs/saya-cli-darwin-arm64": "0.1.0",
+    "@sozlabs/saya-cli-darwin-x64": "0.1.0",
+    "@sozlabs/saya-cli-linux-arm64": "0.1.0",
+    "@sozlabs/saya-cli-linux-x64": "0.1.0",
+    "@sozlabs/saya-cli-win32-x64": "0.1.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
