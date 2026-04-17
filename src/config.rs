@@ -28,6 +28,7 @@ pub struct FileConfig {
     pub stream_max_retries: Option<u32>,
     pub stream_retry_initial_ms: Option<u64>,
     pub stream_retry_max_ms: Option<u64>,
+    pub allow_restricted_tools: Option<bool>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -45,6 +46,7 @@ struct EnvConfig {
     stream_max_retries: Option<u32>,
     stream_retry_initial_ms: Option<u64>,
     stream_retry_max_ms: Option<u64>,
+    allow_restricted_tools: Option<bool>,
 }
 
 #[derive(Clone, Debug)]
@@ -81,6 +83,8 @@ pub struct CliConfig {
     pub stream_max_retries: u32,
     pub stream_retry_initial_ms: u64,
     pub stream_retry_max_ms: u64,
+    /// Opt-in from `SAYA_ALLOW_RESTRICTED_TOOLS` or config file (explicit automation only).
+    pub allow_restricted_tools_opt_in: bool,
 }
 
 fn parse_output(value: &str) -> Option<OutputFormat> {
@@ -200,6 +204,10 @@ impl CliConfig {
                 .or(env_config.stream_retry_max_ms)
                 .or_else(|| file_config.as_ref().and_then(|c| c.stream_retry_max_ms))
                 .unwrap_or(8000),
+            allow_restricted_tools_opt_in: env_config
+                .allow_restricted_tools
+                .or_else(|| file_config.as_ref().and_then(|c| c.allow_restricted_tools))
+                .is_some_and(|v| v),
         }
     }
 
@@ -235,6 +243,9 @@ impl CliConfig {
             stream_retry_max_ms: env::var("SAYA_STREAM_RETRY_MAX_MS")
                 .ok()
                 .and_then(|value| value.parse::<u64>().ok()),
+            allow_restricted_tools: env::var("SAYA_ALLOW_RESTRICTED_TOOLS")
+                .ok()
+                .map(|value| value == "1" || value.eq_ignore_ascii_case("true")),
         };
         Self::from_sources(flags, env_config, file_config, config_dir)
     }
@@ -307,6 +318,7 @@ mod tests {
         assert_eq!(cfg.stream_max_retries, 3);
         assert_eq!(cfg.stream_retry_initial_ms, 500);
         assert_eq!(cfg.stream_retry_max_ms, 8000);
+        assert!(!cfg.allow_restricted_tools_opt_in);
     }
 
     #[test]
@@ -327,6 +339,7 @@ mod tests {
                 stream_max_retries: None,
                 stream_retry_initial_ms: None,
                 stream_retry_max_ms: None,
+                allow_restricted_tools: None,
             },
             Some(FileConfig {
                 base_url: Some("http://file.example".to_string()),
@@ -342,6 +355,7 @@ mod tests {
                 stream_max_retries: None,
                 stream_retry_initial_ms: None,
                 stream_retry_max_ms: None,
+                allow_restricted_tools: None,
             }),
         );
         assert_eq!(cfg.base_url, "http://env.example");
@@ -375,6 +389,7 @@ mod tests {
                 stream_max_retries: None,
                 stream_retry_initial_ms: None,
                 stream_retry_max_ms: None,
+                allow_restricted_tools: None,
             }),
         );
         assert_eq!(cfg.base_url, "http://file-only.example");

@@ -1,0 +1,272 @@
+﻿{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SayaStreamEvent",
+  "description": "SSE event payload contract used by web/CLI/MCP clients.",
+  "oneOf": [
+    {
+      "type": "object",
+      "properties": {
+        "event": {
+          "const": "token"
+        },
+        "data": {
+          "type": "object",
+          "properties": {
+            "text": {
+              "type": "string"
+            },
+            "seq": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "text",
+            "seq"
+          ]
+        }
+      },
+      "required": [
+        "event",
+        "data"
+      ]
+    },
+    {
+      "type": "object",
+      "properties": {
+        "event": {
+          "const": "emotion"
+        },
+        "data": {
+          "type": "object",
+          "properties": {
+            "state": {
+              "type": "string",
+              "enum": [
+                "focus",
+                "confused",
+                "happy",
+                "dormant",
+                "supportive",
+                "waiting_focus",
+                "degraded_confused",
+                "offline_safe"
+              ]
+            },
+            "source": {
+              "enum": [
+                "semantic"
+              ]
+            },
+            "priority": {
+              "type": "integer"
+            },
+            "ttl_ms": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "event_id": {
+              "type": "string"
+            },
+            "conversation_id": {
+              "type": "string"
+            },
+            "ts": {
+              "type": "string"
+            },
+            "seq": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "state",
+            "source",
+            "priority",
+            "ttl_ms",
+            "event_id",
+            "conversation_id",
+            "ts",
+            "seq"
+          ]
+        }
+      },
+      "required": [
+        "event",
+        "data"
+      ]
+    },
+    {
+      "type": "object",
+      "properties": {
+        "event": {
+          "const": "status"
+        },
+        "data": {
+          "type": "object",
+          "properties": {
+            "status": {
+              "type": "string",
+              "enum": [
+                "analysis_started",
+                "stream_stalled",
+                "stream_cancelled",
+                "core_soft_timeout",
+                "core_hard_timeout",
+                "core_unavailable",
+                "draft_insight_ready"
+              ]
+            },
+            "detail": {
+              "type": "string"
+            },
+            "draft_id": {
+              "type": "string"
+            },
+            "event_id": {
+              "type": "string"
+            },
+            "conversation_id": {
+              "type": "string"
+            },
+            "ts": {
+              "type": "string"
+            },
+            "seq": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "status",
+            "event_id",
+            "conversation_id",
+            "ts",
+            "seq"
+          ]
+        }
+      },
+      "required": [
+        "event",
+        "data"
+      ]
+    },
+    {
+      "type": "object",
+      "properties": {
+        "event": {
+          "const": "tool"
+        },
+        "data": {
+          "type": "object",
+          "properties": {
+            "tool_name": {
+              "type": "string"
+            },
+            "tier": {
+              "type": "string",
+              "enum": [
+                "safe",
+                "restricted",
+                "blocked"
+              ]
+            },
+            "outcome": {
+              "type": "string",
+              "enum": [
+                "ok",
+                "error",
+                "denied"
+              ]
+            },
+            "event_id": {
+              "type": "string"
+            },
+            "conversation_id": {
+              "type": "string"
+            },
+            "seq": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "result": {},
+            "message": {
+              "type": "string"
+            },
+            "error_code": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "tool_name",
+            "tier",
+            "outcome",
+            "event_id",
+            "conversation_id",
+            "seq"
+          ]
+        }
+      },
+      "required": [
+        "event",
+        "data"
+      ]
+    },
+    {
+      "type": "object",
+      "properties": {
+        "event": {
+          "const": "error"
+        },
+        "data": {
+          "type": "object",
+          "properties": {
+            "code": {
+              "type": "string"
+            },
+            "message": {
+              "type": "string"
+            },
+            "seq": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "code",
+            "message",
+            "seq"
+          ]
+        }
+      },
+      "required": [
+        "event",
+        "data"
+      ]
+    },
+    {
+      "type": "object",
+      "properties": {
+        "event": {
+          "const": "done"
+        },
+        "data": {
+          "type": "object",
+          "properties": {
+            "seq": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "seq"
+          ]
+        }
+      },
+      "required": [
+        "event",
+        "data"
+      ]
+    }
+  ]
+}

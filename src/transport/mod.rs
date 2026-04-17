@@ -26,6 +26,8 @@ pub struct ChatRequest {
     pub stream_max_retries: u32,
     pub stream_retry_initial_ms: u64,
     pub stream_retry_max_ms: u64,
+    /// `Some(true)` only after explicit opt-in (flag/env) or interactive confirm; otherwise omit/`None` for server default deny.
+    pub allow_restricted_tools: Option<bool>,
 }
 
 pub trait SayaTransport {

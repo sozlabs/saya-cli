@@ -63,6 +63,7 @@ fn test_config() -> CliConfig {
         stream_max_retries: 3,
         stream_retry_initial_ms: 500,
         stream_retry_max_ms: 8000,
+        allow_restricted_tools_opt_in: false,
     }
 }
 
@@ -88,7 +89,7 @@ fn chat_uses_transport_instead_of_agent_runtime() {
         access_token: Some("tok".to_string()),
         conversation_id: None,
     };
-    let out = match run_chat(&transport, &test_config(), "hello", &mut creds) {
+    let out = match run_chat(&transport, &test_config(), "hello", &mut creds, false) {
         Ok(value) => value,
         Err(err) => panic!("{err}"),
     };

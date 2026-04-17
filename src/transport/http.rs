@@ -7,12 +7,13 @@ use crate::contracts::{
 use crate::debug::debug_log;
 use crate::sse_parse::SseDecoder;
 use crate::stream_contract::StreamEvent;
+use crate::stream_ux::StreamUx;
 use crate::terminal_guard::TerminalGuard;
 use futures_util::StreamExt;
 use reqwest::header::{AUTHORIZATION, CONTENT_TYPE};
 use reqwest::redirect::Policy;
 use std::io::{IsTerminal, Write};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 pub struct HttpTransport;
 
@@ -127,6 +128,7 @@ impl SayaTransport for HttpTransport {
             },
             attachments: Vec::<Attachment>::new(),
             context: request.context.clone(),
+            allow_restricted_tools: request.allow_restricted_tools,
         };
 
         let rt = tokio::runtime::Builder::new_multi_thread()
@@ -248,6 +250,7 @@ async fn chat_stream_round(
     let mut decoder = SseDecoder::new();
     let mut saw_done = false;
     let mut spinner = spinner;
+    let mut stream_ux = StreamUx::new();
 
     loop {
         tokio::select! {
@@ -295,6 +298,7 @@ async fn chat_stream_round(
                                     saw_done = true;
                                 }
                                 StreamEvent::Emotion(ref e) => {
+                                    stream_ux.on_emotion(e, Instant::now());
                                     debug_log(
                                         debug,
                                         &format!(
@@ -304,6 +308,7 @@ async fn chat_stream_round(
                                     );
                                 }
                                 StreamEvent::Status(ref s) => {
+                                    stream_ux.on_status(s);
                                     debug_log(
                                         debug,
                                         &format!(

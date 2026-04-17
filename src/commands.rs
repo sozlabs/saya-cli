@@ -3,6 +3,7 @@ use crate::contracts::ConversationContext;
 use crate::credentials::Credentials;
 use crate::transport::{ChatRequest, ChatResult, SayaTransport};
 use serde::Serialize;
+use std::io::IsTerminal;
 
 fn render(config: &CliConfig, command: &str, payload: &str) -> String {
     let payload_json = match serde_json::to_string(payload) {
@@ -41,11 +42,32 @@ pub fn run_health(transport: &dyn SayaTransport, config: &CliConfig) -> Result<S
     Ok(render(config, "health", &out))
 }
 
+fn resolve_allow_restricted(config: &CliConfig, cli_flag: bool) -> Result<Option<bool>, String> {
+    if cli_flag || config.allow_restricted_tools_opt_in {
+        return Ok(Some(true));
+    }
+    if config.non_interactive {
+        return Ok(None);
+    }
+    if !std::io::stdin().is_terminal() {
+        return Ok(None);
+    }
+    let yes = dialoguer::Confirm::new()
+        .with_prompt(
+            "Allow restricted tools for this message? (write-like tools on the soz-saya allowlist)",
+        )
+        .default(false)
+        .interact()
+        .map_err(|e| format!("confirm: {e}"))?;
+    Ok(if yes { Some(true) } else { None })
+}
+
 pub fn run_chat(
     transport: &dyn SayaTransport,
     config: &CliConfig,
     message: &str,
     credentials: &mut Credentials,
+    allow_restricted_tools_cli: bool,
 ) -> Result<String, String> {
     if credentials.access_token.is_none() {
         return Err("missing access token: set credentials token before chat".to_string());
@@ -60,6 +82,7 @@ pub fn run_chat(
         actor_id: config.actor_id.clone(),
         channel_id: config.channel_id.clone(),
     };
+    let allow_restricted_tools = resolve_allow_restricted(config, allow_restricted_tools_cli)?;
     let request = ChatRequest {
         base_url: config.base_url.clone(),
         message: message.to_string(),
@@ -72,6 +95,7 @@ pub fn run_chat(
         stream_max_retries: config.stream_max_retries,
         stream_retry_initial_ms: config.stream_retry_initial_ms,
         stream_retry_max_ms: config.stream_retry_max_ms,
+        allow_restricted_tools,
     };
     let out = transport.chat(&request)?;
     credentials.conversation_id = Some(out.conversation_id.clone());
@@ -168,6 +192,7 @@ mod tests {
             stream_max_retries: 3,
             stream_retry_initial_ms: 500,
             stream_retry_max_ms: 8000,
+            allow_restricted_tools_opt_in: false,
         }
     }
 
@@ -199,7 +224,7 @@ mod tests {
             access_token: Some("secret".to_string()),
             conversation_id: None,
         };
-        let result = match run_chat(&transport, &test_config(), "hello", &mut creds) {
+        let result = match run_chat(&transport, &test_config(), "hello", &mut creds, false) {
             Ok(value) => value,
             Err(err) => panic!("{err}"),
         };
@@ -222,7 +247,13 @@ mod tests {
             access_token: Some("secret".to_string()),
             conversation_id: Some("old-cid".to_string()),
         };
-        let result = match run_chat(&transport, &test_config_resume(), "hello", &mut creds) {
+        let result = match run_chat(
+            &transport,
+            &test_config_resume(),
+            "hello",
+            &mut creds,
+            false,
+        ) {
             Ok(value) => value,
             Err(err) => panic!("{err}"),
         };
@@ -244,7 +275,7 @@ mod tests {
             access_token: None,
             conversation_id: None,
         };
-        let result = run_chat(&transport, &test_config(), "hello", &mut creds);
+        let result = run_chat(&transport, &test_config(), "hello", &mut creds, false);
         assert!(result.is_err());
         let calls = match transport.calls.lock() {
             Ok(value) => value,

@@ -5,5 +5,6 @@ pub mod credentials;
 pub mod debug;
 pub mod sse_parse;
 pub mod stream_contract;
+pub mod stream_ux;
 pub mod terminal_guard;
 pub mod transport;

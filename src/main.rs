@@ -67,6 +67,9 @@ enum Commands {
     Chat {
         #[arg(long)]
         message: String,
+        /// Allow allowlisted restricted (write-like) tools without prompting (use with care in scripts).
+        #[arg(long, default_value_t = false)]
+        allow_restricted_tools: bool,
     },
 }
 
@@ -118,8 +121,17 @@ fn main() {
                 std::process::exit(1);
             }
         },
-        Commands::Chat { message } => {
-            match run_chat(&transport, &config, &message, &mut credentials) {
+        Commands::Chat {
+            message,
+            allow_restricted_tools,
+        } => {
+            match run_chat(
+                &transport,
+                &config,
+                &message,
+                &mut credentials,
+                allow_restricted_tools,
+            ) {
                 Ok(output) => println!("{}", output),
                 Err(err) => {
                     eprintln!("{}", err);

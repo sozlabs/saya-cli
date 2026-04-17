@@ -28,6 +28,7 @@ The default release binary is `target/release/saya_cli` (crate package name `say
 | `saya version` | Print CLI version. |
 | `saya health` | `GET {base-url}/health`. |
 | `saya chat --message "…"` | Create or resume a conversation and send a user message; response arrives over **SSE** and is printed as it streams (text mode). |
+| `saya chat --allow-restricted-tools` | Opt-in for soz-saya restricted tools without a prompt (see **Restricted tools**). |
 
 Use `saya --help` and `saya chat --help` for flag details.
 
@@ -38,7 +39,7 @@ Use `saya --help` and `saya chat --help` for flag details.
 | `--base-url <url>` | soz-saya base URL. |
 | `--timeout-ms <n>` | Connect / blocking HTTP timeout for non-stream calls; stream uses this as **connect** timeout. |
 | `--output <text\|json>` | Text: stream tokens to stdout. JSON: buffer tokens and print one JSON object at the end. |
-| `--non-interactive` | Reserved for future prompts; prefer explicit flags in automation. |
+| `--non-interactive` | No interactive prompts; restricted tools stay denied unless you set env/flag (see **Restricted tools**). |
 | `--debug` | Transport logs with **redacted** secrets (no raw `Authorization` values). |
 | `--conversation-id <id>` | Resume an existing conversation. |
 | `--session-id`, `--tenant-id`, `--actor-id`, `--channel-id` | Conversation context (defaults match local “terminal” presets). |
@@ -63,6 +64,9 @@ Overrides follow: **CLI flags → environment → `config.json` → defaults**.
 | `SAYA_STREAM_MAX_RETRIES` | Extra stream reopen attempts. |
 | `SAYA_STREAM_RETRY_INITIAL_MS` | Initial backoff (ms). |
 | `SAYA_STREAM_RETRY_MAX_MS` | Backoff cap (ms). |
+| `SAYA_ALLOW_RESTRICTED_TOOLS` | `1` / `true`: send `allow_restricted_tools: true` on chat requests (automation opt-in; same risk as `--allow-restricted-tools`). |
+
+Optional in `config.json` (same merge order as other file fields): `allow_restricted_tools`: boolean — when `true`, equivalent to the env flag above.
 
 ## Configuration directory
 
@@ -79,6 +83,17 @@ Sensitive values are not printed in debug logs.
 - Without a token, `chat` exits with an error.
 - If `conversation_id` is omitted, the client creates a conversation (`POST /v1/conversations`) and persists the new id for the next run.
 - `channel_id` defaults to `terminal` unless overridden.
+
+## Restricted tools
+
+soz-saya may call **restricted** (write-like) tools only if the message body includes `allow_restricted_tools: true` (see `MessageRequestSchema` in soz-saya). By default the CLI does **not** send that.
+
+| Situation | Behavior |
+|-----------|----------|
+| `--non-interactive` or stdin is not a TTY | Field omitted (server treats as deny). |
+| Interactive TTY | Prompt once per `chat`: allow restricted tools or not. |
+| `--allow-restricted-tools` on `saya chat` | Sends `true` without prompting (use only if you accept the risk). |
+| `SAYA_ALLOW_RESTRICTED_TOOLS=true` or `allow_restricted_tools: true` in config | Same as the flag (for scripts/CI). |
 
 ## Streaming
 
@@ -99,7 +114,13 @@ Each SSE event uses an `event:` line plus one or more `data:` lines (JSON payloa
 - `error` — terminal error for the stream (`code`, `message`, `seq`).
 - `done` — normal completion (`seq`).
 
-The CLI accumulates `token` payloads into the final reply. Other events are parsed for correctness; in `--debug` mode, summaries are logged to the debug sink.
+The CLI accumulates `token` payloads into the final reply (stdout in text mode, or the `text` field in JSON output).
+
+### Emotion and status (stderr)
+
+`emotion` and `status` events are **not** appended to the assistant text. They are shown on a separate UX layer: short lines on **stderr** with prefixes `[saya:emotion]` and `[saya:status]` (muted gray). Semantic emotions carry `priority` and `ttl_ms` from the server: a new emotion replaces the active one if its **priority is strictly higher**, or if the previous emotion’s TTL has **expired**. When soz-saya adds a `local` emotion source to the schema, this crate should follow that spec and be updated together with [`src/stream_contract.rs`](src/stream_contract.rs).
+
+`tool` events still appear in `--debug` diagnostics only (no second stdout stream).
 
 ### Retries and idempotency
 
@@ -132,7 +153,22 @@ With `--output json`, token text is **not** streamed to stdout during the reques
 
 ## Contract source of truth
 
-Do not invent stream fields in this crate: when **soz-saya** changes `StreamEventSchema`, update `src/stream_contract.rs` and SSE tests/fixtures accordingly.
+Do not invent stream fields in this crate: when **soz-saya** changes `StreamEventSchema`, update `src/stream_contract.rs`, SSE tests/fixtures, and the golden schema under `schemas/stream_events.schema.json`.
+
+### CI and schema drift
+
+GitHub Actions runs `cargo fmt`, `clippy` (`-D warnings`), tests, [`.ci/check-boundaries.sh`](.ci/check-boundaries.sh) (forbidden deps/patterns), and [`.ci/check-stream-contract.sh`](.ci/check-stream-contract.sh).
+
+The contract script always validates that `schemas/stream_events.schema.json` is valid JSON. If you set **`SOZ_SAYA_ROOT`** to a checkout of **soz-saya** (same machine as the CLI repo), it also diffs the golden file against `buildStreamJsonSchema()` from that tree and fails on mismatch.
+
+To refresh the golden file after a server-side schema change:
+
+```bash
+# from soz-saya (Node 20+)
+npx tsx scripts/export-stream-schema.ts > ../saya-cli/schemas/stream_events.schema.json
+```
+
+(or the equivalent `npx tsx -e "import { buildStreamJsonSchema } from './src/contracts.ts'; ..."`).
 
 ## Contributing
 

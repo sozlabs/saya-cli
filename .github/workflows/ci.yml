@@ -25,3 +25,6 @@ jobs:
 
       - name: DoD0 boundary checks
         run: bash .ci/check-boundaries.sh
+
+      - name: Stream contract golden schema
+        run: bash .ci/check-stream-contract.sh
