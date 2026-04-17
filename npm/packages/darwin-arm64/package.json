@@ -2,7 +2,7 @@
   "name": "@sozlabs/saya-cli-darwin-arm64",
   "version": "0.1.0",
   "description": "Native saya binary for macOS Apple Silicon",
-  "license": "MIT",
+  "license": "Apache-2.0",
   "os": [
     "darwin"
   ],
