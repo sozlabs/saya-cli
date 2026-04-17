@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented here. The format follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.1] - 2026-04-17
+
+### Changed
+
+- Release workflow: `npm_publish` fails if `NPM_TOKEN` is missing (no silent skip).
+
 ## [0.1.0] - 2026-04-17
 
 ### Added

@@ -1,6 +1,6 @@
 [package]
 name = "saya_cli"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 description = "Thin CLI client for the soz-saya HTTP API"
 license = "Apache-2.0"

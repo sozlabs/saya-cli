@@ -140,10 +140,10 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
-          set -e
+          set -euo pipefail
           if [ -z "${NODE_AUTH_TOKEN:-}" ]; then
-            echo "NPM_TOKEN not set; skip npm publish"
-            exit 0
+            echo "::error::Set repository secret NPM_TOKEN (Settings > Secrets and variables > Actions)."
+            exit 1
           fi
           for d in npm/packages/*/; do
             (cd "$d" && npm publish --access public)
@@ -153,8 +153,9 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
+          set -euo pipefail
           if [ -z "${NODE_AUTH_TOKEN:-}" ]; then
-            echo "NPM_TOKEN not set; skip npm publish"
-            exit 0
+            echo "::error::Set repository secret NPM_TOKEN (Settings > Secrets and variables > Actions)."
+            exit 1
           fi
           (cd npm/wrapper && npm publish --access public)

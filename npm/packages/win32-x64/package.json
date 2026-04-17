@@ -1,6 +1,6 @@
 {
   "name": "@sozlabs/saya-cli-win32-x64",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Native saya binary for Windows x64",
   "license": "Apache-2.0",
   "os": [
