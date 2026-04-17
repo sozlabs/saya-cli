@@ -1,4 +1,4 @@
-﻿{
+{
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "SayaStreamEvent",
   "description": "SSE event payload contract used by web/CLI/MCP clients.",

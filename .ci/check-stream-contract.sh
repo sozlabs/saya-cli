@@ -11,7 +11,7 @@ if [[ ! -f "$GOLDEN" ]]; then
 fi
 
 echo "[contract] parsing $GOLDEN"
-python3 -c "import json; json.load(open('$GOLDEN'))"
+python3 -c "import json; json.load(open('$GOLDEN', encoding='utf-8-sig'))"
 
 SOZ_SAYA_ROOT="${SOZ_SAYA_ROOT:-}"
 if [[ -n "$SOZ_SAYA_ROOT" && -d "$SOZ_SAYA_ROOT" ]]; then
