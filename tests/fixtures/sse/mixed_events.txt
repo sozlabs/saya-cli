@@ -1,0 +1,18 @@
+event: emotion
+data: {"state":"focus","source":"semantic","priority":1,"ttl_ms":5000,"event_id":"e1","conversation_id":"c1","ts":"2026-01-01T00:00:00.000Z","seq":0}
+
+event: token
+data: {"text":"hello ","seq":1}
+
+event: token
+data: {"text":"world","seq":2}
+
+event: status
+data: {"status":"analysis_started","event_id":"s1","conversation_id":"c1","ts":"2026-01-01T00:00:01.000Z","seq":3}
+
+event: tool
+data: {"tool_name":"search","tier":"safe","outcome":"ok","event_id":"t1","conversation_id":"c1","seq":4}
+
+event: done
+data: {"seq":5}
+

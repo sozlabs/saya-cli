@@ -24,6 +24,10 @@ pub struct FileConfig {
     pub tenant_id: Option<String>,
     pub actor_id: Option<String>,
     pub channel_id: Option<String>,
+    /// Max full-stream retry attempts after transport failure (not counting first try).
+    pub stream_max_retries: Option<u32>,
+    pub stream_retry_initial_ms: Option<u64>,
+    pub stream_retry_max_ms: Option<u64>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -38,6 +42,9 @@ struct EnvConfig {
     tenant_id: Option<String>,
     actor_id: Option<String>,
     channel_id: Option<String>,
+    stream_max_retries: Option<u32>,
+    stream_retry_initial_ms: Option<u64>,
+    stream_retry_max_ms: Option<u64>,
 }
 
 #[derive(Clone, Debug)]
@@ -52,6 +59,9 @@ pub struct ConfigFlags {
     pub tenant_id: Option<String>,
     pub actor_id: Option<String>,
     pub channel_id: Option<String>,
+    pub stream_max_retries: Option<u32>,
+    pub stream_retry_initial_ms: Option<u64>,
+    pub stream_retry_max_ms: Option<u64>,
 }
 
 #[derive(Clone, Debug)]
@@ -67,6 +77,10 @@ pub struct CliConfig {
     pub tenant_id: String,
     pub actor_id: String,
     pub channel_id: String,
+    /// Full-stream retries after I/O or incomplete SSE (each retry is a new POST).
+    pub stream_max_retries: u32,
+    pub stream_retry_initial_ms: u64,
+    pub stream_retry_max_ms: u64,
 }
 
 fn parse_output(value: &str) -> Option<OutputFormat> {
@@ -171,6 +185,21 @@ impl CliConfig {
                 .or(env_config.channel_id)
                 .or_else(|| file_config.as_ref().and_then(|c| c.channel_id.clone()))
                 .map_or("terminal".to_string(), |value| value),
+            stream_max_retries: flags
+                .stream_max_retries
+                .or(env_config.stream_max_retries)
+                .or_else(|| file_config.as_ref().and_then(|c| c.stream_max_retries))
+                .unwrap_or(3),
+            stream_retry_initial_ms: flags
+                .stream_retry_initial_ms
+                .or(env_config.stream_retry_initial_ms)
+                .or_else(|| file_config.as_ref().and_then(|c| c.stream_retry_initial_ms))
+                .unwrap_or(500),
+            stream_retry_max_ms: flags
+                .stream_retry_max_ms
+                .or(env_config.stream_retry_max_ms)
+                .or_else(|| file_config.as_ref().and_then(|c| c.stream_retry_max_ms))
+                .unwrap_or(8000),
         }
     }
 
@@ -197,6 +226,15 @@ impl CliConfig {
             tenant_id: env::var("SAYA_TENANT_ID").ok(),
             actor_id: env::var("SAYA_ACTOR_ID").ok(),
             channel_id: env::var("SAYA_CHANNEL_ID").ok(),
+            stream_max_retries: env::var("SAYA_STREAM_MAX_RETRIES")
+                .ok()
+                .and_then(|value| value.parse::<u32>().ok()),
+            stream_retry_initial_ms: env::var("SAYA_STREAM_RETRY_INITIAL_MS")
+                .ok()
+                .and_then(|value| value.parse::<u64>().ok()),
+            stream_retry_max_ms: env::var("SAYA_STREAM_RETRY_MAX_MS")
+                .ok()
+                .and_then(|value| value.parse::<u64>().ok()),
         };
         Self::from_sources(flags, env_config, file_config, config_dir)
     }
@@ -229,6 +267,9 @@ mod tests {
             tenant_id: None,
             actor_id: None,
             channel_id: None,
+            stream_max_retries: None,
+            stream_retry_initial_ms: None,
+            stream_retry_max_ms: None,
         }
     }
 
@@ -246,6 +287,9 @@ mod tests {
                 tenant_id: Some("t-flags".to_string()),
                 actor_id: Some("u-flags".to_string()),
                 channel_id: Some("terminal".to_string()),
+                stream_max_retries: None,
+                stream_retry_initial_ms: None,
+                stream_retry_max_ms: None,
             },
             EnvConfig::default(),
             None,
@@ -260,6 +304,9 @@ mod tests {
         assert_eq!(cfg.tenant_id, "t-flags");
         assert_eq!(cfg.actor_id, "u-flags");
         assert_eq!(cfg.channel_id, "terminal");
+        assert_eq!(cfg.stream_max_retries, 3);
+        assert_eq!(cfg.stream_retry_initial_ms, 500);
+        assert_eq!(cfg.stream_retry_max_ms, 8000);
     }
 
     #[test]
@@ -277,6 +324,9 @@ mod tests {
                 tenant_id: Some("t1".to_string()),
                 actor_id: Some("u1".to_string()),
                 channel_id: Some("terminal".to_string()),
+                stream_max_retries: None,
+                stream_retry_initial_ms: None,
+                stream_retry_max_ms: None,
             },
             Some(FileConfig {
                 base_url: Some("http://file.example".to_string()),
@@ -289,6 +339,9 @@ mod tests {
                 tenant_id: Some("t-file".to_string()),
                 actor_id: Some("u-file".to_string()),
                 channel_id: Some("web".to_string()),
+                stream_max_retries: None,
+                stream_retry_initial_ms: None,
+                stream_retry_max_ms: None,
             }),
         );
         assert_eq!(cfg.base_url, "http://env.example");
@@ -319,6 +372,9 @@ mod tests {
                 tenant_id: Some("t-file-only".to_string()),
                 actor_id: Some("u-file-only".to_string()),
                 channel_id: Some("terminal".to_string()),
+                stream_max_retries: None,
+                stream_retry_initial_ms: None,
+                stream_retry_max_ms: None,
             }),
         );
         assert_eq!(cfg.base_url, "http://file-only.example");

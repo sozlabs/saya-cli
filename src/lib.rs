@@ -3,4 +3,7 @@ pub mod config;
 pub mod contracts;
 pub mod credentials;
 pub mod debug;
+pub mod sse_parse;
+pub mod stream_contract;
+pub mod terminal_guard;
 pub mod transport;

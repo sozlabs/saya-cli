@@ -1,7 +1,8 @@
 use crate::config::{CliConfig, OutputFormat};
 use crate::contracts::ConversationContext;
 use crate::credentials::Credentials;
-use crate::transport::{ChatRequest, SayaTransport};
+use crate::transport::{ChatRequest, ChatResult, SayaTransport};
+use serde::Serialize;
 
 fn render(config: &CliConfig, command: &str, payload: &str) -> String {
     let payload_json = match serde_json::to_string(payload) {
@@ -15,6 +16,16 @@ fn render(config: &CliConfig, command: &str, payload: &str) -> String {
             command, payload_json
         ),
     }
+}
+
+#[derive(Serialize)]
+struct ChatJsonOutput<'a> {
+    command: &'static str,
+    ok: bool,
+    conversation_id: &'a str,
+    text: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    warning: Option<&'a str>,
 }
 
 pub fn run_version(config: &CliConfig) -> String {
@@ -57,10 +68,33 @@ pub fn run_chat(
         timeout: config.timeout,
         auth_token: credentials.access_token.clone(),
         debug: config.debug,
+        output_format: config.output_format,
+        stream_max_retries: config.stream_max_retries,
+        stream_retry_initial_ms: config.stream_retry_initial_ms,
+        stream_retry_max_ms: config.stream_retry_max_ms,
     };
     let out = transport.chat(&request)?;
     credentials.conversation_id = Some(out.conversation_id.clone());
-    Ok(render(config, "chat", &out.text))
+    format_chat_output(config, &out)
+}
+
+fn format_chat_output(config: &CliConfig, out: &ChatResult) -> Result<String, String> {
+    if let Some(w) = out.warning.as_deref() {
+        eprintln!("[saya] {w}");
+    }
+    match config.output_format {
+        OutputFormat::Text => Ok(out.text.clone()),
+        OutputFormat::Json => {
+            let payload = ChatJsonOutput {
+                command: "chat",
+                ok: out.warning.is_none(),
+                conversation_id: out.conversation_id.as_str(),
+                text: out.text.as_str(),
+                warning: out.warning.as_deref(),
+            };
+            serde_json::to_string(&payload).map_err(|e| format!("json output: {e}"))
+        }
+    }
 }
 
 #[cfg(test)]
@@ -113,6 +147,7 @@ mod tests {
             Ok(crate::transport::ChatResult {
                 conversation_id: "generated-cid".to_string(),
                 text: "done".to_string(),
+                warning: None,
             })
         }
     }
@@ -130,6 +165,9 @@ mod tests {
             tenant_id: "t".to_string(),
             actor_id: "u".to_string(),
             channel_id: "terminal".to_string(),
+            stream_max_retries: 3,
+            stream_retry_initial_ms: 500,
+            stream_retry_max_ms: 8000,
         }
     }
 

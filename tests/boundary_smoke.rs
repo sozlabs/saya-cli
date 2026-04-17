@@ -42,6 +42,7 @@ impl SayaTransport for MockTransport {
         Ok(ChatResult {
             conversation_id: "generated".to_string(),
             text: "done".to_string(),
+            warning: None,
         })
     }
 }
@@ -59,6 +60,9 @@ fn test_config() -> CliConfig {
         tenant_id: "t".to_string(),
         actor_id: "u".to_string(),
         channel_id: "terminal".to_string(),
+        stream_max_retries: 3,
+        stream_retry_initial_ms: 500,
+        stream_retry_max_ms: 8000,
     }
 }
 

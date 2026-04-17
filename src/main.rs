@@ -3,6 +3,7 @@ use saya_cli::commands::{run_chat, run_health, run_version};
 use saya_cli::config::{CliConfig, ConfigFlags, OutputFormat};
 use saya_cli::credentials::{load_credentials, save_credentials};
 use saya_cli::debug::{debug_log, should_debug};
+use saya_cli::terminal_guard::install_panic_terminal_hook;
 use saya_cli::transport::http::HttpTransport;
 
 #[derive(Parser)]
@@ -44,6 +45,16 @@ struct Cli {
     #[arg(long)]
     channel_id: Option<String>,
 
+    /// Max extra attempts to reopen the SSE stream after I/O failure (each attempt is a new POST).
+    #[arg(long)]
+    stream_max_retries: Option<u32>,
+
+    #[arg(long)]
+    stream_retry_initial_ms: Option<u64>,
+
+    #[arg(long)]
+    stream_retry_max_ms: Option<u64>,
+
     #[command(subcommand)]
     command: Commands,
 }
@@ -60,6 +71,7 @@ enum Commands {
 }
 
 fn main() {
+    install_panic_terminal_hook();
     let cli = Cli::parse();
     let output_format = match cli.output.as_deref() {
         Some("json") => Some(OutputFormat::Json),
@@ -77,6 +89,9 @@ fn main() {
         tenant_id: cli.tenant_id,
         actor_id: cli.actor_id,
         channel_id: cli.channel_id,
+        stream_max_retries: cli.stream_max_retries,
+        stream_retry_initial_ms: cli.stream_retry_initial_ms,
+        stream_retry_max_ms: cli.stream_retry_max_ms,
     });
     let debug_enabled = should_debug(config.debug);
     let mut credentials = load_credentials(&config.config_dir);
