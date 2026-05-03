@@ -9,13 +9,23 @@ use crate::sse_parse::SseDecoder;
 use crate::stream_contract::StreamEvent;
 use crate::stream_ux::StreamUx;
 use crate::terminal_guard::TerminalGuard;
+use async_trait::async_trait;
 use futures_util::StreamExt;
 use reqwest::header::{AUTHORIZATION, CONTENT_TYPE};
 use reqwest::redirect::Policy;
+use reqwest::Client;
 use std::io::{IsTerminal, Write};
 use std::time::{Duration, Instant};
 
-pub struct HttpTransport;
+pub struct HttpTransport {
+    client: Client,
+}
+
+impl HttpTransport {
+    pub fn new(client: Client) -> Self {
+        Self { client }
+    }
+}
 
 fn map_http_error(status: reqwest::StatusCode, body: String, op: &str) -> String {
     if status.as_u16() == 401 {
@@ -36,24 +46,30 @@ fn map_http_error(status: reqwest::StatusCode, body: String, op: &str) -> String
     format!("{op} failed ({status}): {body}")
 }
 
+#[async_trait]
 impl SayaTransport for HttpTransport {
-    fn health(&self, base_url: &str, timeout: Duration, debug: bool) -> Result<String, String> {
+    async fn health(
+        &self,
+        base_url: &str,
+        timeout: Duration,
+        debug: bool,
+    ) -> Result<String, String> {
         let url = format!("{}/health", base_url.trim_end_matches('/'));
         debug_log(
             debug,
             &format!("GET {url} timeout_ms={}", timeout.as_millis()),
         );
-        let client = reqwest::blocking::Client::builder()
-            .timeout(timeout)
-            .build()
-            .map_err(|e| format!("failed to build http client: {e}"))?;
-        let response = client
+        let response = self
+            .client
             .get(&url)
+            .timeout(timeout)
             .send()
+            .await
             .map_err(|e| format!("health request failed: {e}"))?;
         let status = response.status();
         let body = response
             .text()
+            .await
             .map_err(|e| format!("failed to read health response: {e}"))?;
         debug_log(
             debug,
@@ -65,16 +81,12 @@ impl SayaTransport for HttpTransport {
         Ok(body)
     }
 
-    fn chat(&self, request: &ChatRequest) -> Result<ChatResult, String> {
+    async fn chat(&self, request: &ChatRequest) -> Result<ChatResult, String> {
         let token = match request.auth_token.as_deref() {
             Some(value) if !value.trim().is_empty() => value,
             _ => return Err("missing access token: set credentials token before chat".to_string()),
         };
         let _guard = TerminalGuard;
-        let blocking = reqwest::blocking::Client::builder()
-            .timeout(request.timeout)
-            .build()
-            .map_err(|e| format!("failed to build http client: {e}"))?;
         let auth_value = format!("Bearer {token}");
         debug_log(
             request.debug,
@@ -98,22 +110,26 @@ impl SayaTransport for HttpTransport {
                     actor_id: request.context.actor_id.clone(),
                     channel_id: request.context.channel_id.clone(),
                 };
-                let response = blocking
+                let response = self
+                    .client
                     .post(&create_url)
                     .header(CONTENT_TYPE, "application/json")
                     .header(AUTHORIZATION, &auth_value)
+                    .timeout(request.timeout)
                     .json(&create_request)
                     .send()
+                    .await
                     .map_err(|e| format!("create conversation request failed: {e}"))?;
                 let status = response.status();
                 if !status.is_success() {
-                    let body = response.text().map_err(|e| {
+                    let body = response.text().await.map_err(|e| {
                         format!("failed to read create conversation error body: {e}")
                     })?;
                     return Err(map_http_error(status, body, "create conversation"));
                 }
                 let payload = response
                     .json::<ConversationCreateResponse>()
+                    .await
                     .map_err(|e| format!("failed to parse create conversation response: {e}"))?;
                 payload.conversation_id
             }
@@ -131,11 +147,6 @@ impl SayaTransport for HttpTransport {
             allow_restricted_tools: request.allow_restricted_tools,
         };
 
-        let rt = tokio::runtime::Builder::new_multi_thread()
-            .enable_all()
-            .build()
-            .map_err(|e| format!("failed to start async runtime: {e}"))?;
-
         let max_attempts = request.stream_max_retries.saturating_add(1);
         let mut accumulated = String::new();
         let mut last_issue: Option<String> = None;
@@ -148,7 +159,7 @@ impl SayaTransport for HttpTransport {
                     max_attempts - 1
                 );
             }
-            let round = rt.block_on(chat_stream_round(
+            let round = chat_stream_round(
                 &stream_url,
                 &message_request,
                 &auth_value,
@@ -156,7 +167,8 @@ impl SayaTransport for HttpTransport {
                 request.debug,
                 request.output_format,
                 &mut accumulated,
-            ));
+            )
+            .await;
 
             match round {
                 Ok(StreamRound::Completed) => {
@@ -187,7 +199,7 @@ impl SayaTransport for HttpTransport {
                     .stream_retry_initial_ms
                     .saturating_mul(mult)
                     .min(request.stream_retry_max_ms);
-                std::thread::sleep(Duration::from_millis(sleep_ms));
+                tokio::time::sleep(Duration::from_millis(sleep_ms)).await;
             }
         }
 
@@ -214,13 +226,14 @@ async fn chat_stream_round(
     output_format: OutputFormat,
     accum: &mut String,
 ) -> Result<StreamRound, String> {
-    let client = reqwest::Client::builder()
+    // Per-stream client: `connect_timeout` is only on ClientBuilder, not RequestBuilder; value matches prior async path.
+    let stream_client = Client::builder()
         .connect_timeout(connect_timeout)
         .redirect(Policy::limited(10))
         .build()
         .map_err(|e| format!("failed to build async http client: {e}"))?;
 
-    let response = client
+    let response = stream_client
         .post(stream_url)
         .header(CONTENT_TYPE, "application/json")
         .header(AUTHORIZATION, auth_header)
@@ -346,4 +359,8 @@ async fn chat_stream_round(
     } else {
         Ok(StreamRound::Incomplete)
     }
+}
+
+pub fn build_http_client() -> Result<Client, reqwest::Error> {
+    Client::builder().redirect(Policy::limited(10)).build()
 }
