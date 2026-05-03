@@ -1,3 +1,4 @@
+use saya_cli::async_trait;
 use saya_cli::commands::{run_chat, run_health};
 use saya_cli::config::{CliConfig, OutputFormat};
 use saya_cli::credentials::Credentials;
@@ -11,8 +12,14 @@ struct MockTransport {
     calls: Mutex<Vec<String>>,
 }
 
+#[async_trait]
 impl SayaTransport for MockTransport {
-    fn health(&self, base_url: &str, _timeout: Duration, _debug: bool) -> Result<String, String> {
+    async fn health(
+        &self,
+        base_url: &str,
+        _timeout: Duration,
+        _debug: bool,
+    ) -> Result<String, String> {
         self.calls
             .lock()
             .map_err(|_| "lock poisoned".to_string())?
@@ -20,7 +27,7 @@ impl SayaTransport for MockTransport {
         Ok("ok".to_string())
     }
 
-    fn chat(&self, request: &ChatRequest) -> Result<ChatResult, String> {
+    async fn chat(&self, request: &ChatRequest) -> Result<ChatResult, String> {
         self.calls
             .lock()
             .map_err(|_| "lock poisoned".to_string())?
@@ -67,10 +74,10 @@ fn test_config() -> CliConfig {
     }
 }
 
-#[test]
-fn health_uses_saya_transport_shape() {
+#[tokio::test]
+async fn health_uses_saya_transport_shape() {
     let transport = MockTransport::default();
-    let out = match run_health(&transport, &test_config()) {
+    let out = match run_health(&transport, &test_config()).await {
         Ok(value) => value,
         Err(err) => panic!("{err}"),
     };
@@ -82,14 +89,14 @@ fn health_uses_saya_transport_shape() {
     assert_eq!(calls.as_slice(), ["health:http://127.0.0.1:3010"]);
 }
 
-#[test]
-fn chat_uses_transport_instead_of_agent_runtime() {
+#[tokio::test]
+async fn chat_uses_transport_instead_of_agent_runtime() {
     let transport = MockTransport::default();
     let mut creds = Credentials {
         access_token: Some("tok".to_string()),
         conversation_id: None,
     };
-    let out = match run_chat(&transport, &test_config(), "hello", &mut creds, false) {
+    let out = match run_chat(&transport, &test_config(), "hello", &mut creds, false).await {
         Ok(value) => value,
         Err(err) => panic!("{err}"),
     };
