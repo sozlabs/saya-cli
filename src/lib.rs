@@ -1,3 +1,6 @@
+/// Re-export for integration tests and downstream `#[async_trait]` on `SayaTransport` impls.
+pub use async_trait::async_trait;
+
 pub mod commands;
 pub mod config;
 pub mod contracts;

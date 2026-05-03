@@ -2,6 +2,7 @@ use std::time::Duration;
 
 use crate::config::OutputFormat;
 use crate::contracts::ConversationContext;
+use async_trait::async_trait;
 
 pub mod http;
 
@@ -30,7 +31,14 @@ pub struct ChatRequest {
     pub allow_restricted_tools: Option<bool>,
 }
 
-pub trait SayaTransport {
-    fn health(&self, base_url: &str, timeout: Duration, debug: bool) -> Result<String, String>;
-    fn chat(&self, request: &ChatRequest) -> Result<ChatResult, String>;
+#[async_trait]
+pub trait SayaTransport: Send + Sync {
+    async fn health(
+        &self,
+        base_url: &str,
+        timeout: Duration,
+        debug: bool,
+    ) -> Result<String, String>;
+
+    async fn chat(&self, request: &ChatRequest) -> Result<ChatResult, String>;
 }
