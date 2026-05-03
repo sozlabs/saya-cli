@@ -4,7 +4,8 @@ use saya_cli::config::{CliConfig, ConfigFlags, OutputFormat};
 use saya_cli::credentials::{load_credentials, save_credentials};
 use saya_cli::debug::{debug_log, should_debug};
 use saya_cli::terminal_guard::install_panic_terminal_hook;
-use saya_cli::transport::http::HttpTransport;
+use saya_cli::transport::http::{build_http_client, HttpTransport};
+use std::io::{self, BufRead};
 
 #[derive(Parser)]
 #[command(name = "saya")]
@@ -64,6 +65,12 @@ enum Commands {
     Version,
     Health,
 
+    /// Store the Bearer access token used by `saya chat`
+    Auth {
+        #[command(subcommand)]
+        command: AuthCommands,
+    },
+
     Chat {
         #[arg(long)]
         message: String,
@@ -73,7 +80,18 @@ enum Commands {
     },
 }
 
-fn main() {
+#[derive(Subcommand)]
+enum AuthCommands {
+    /// Write access token to credentials file (use `--token` or pipe a line on stdin)
+    Set {
+        /// Token string (omit to read one line from stdin; safer than shell history)
+        #[arg(long, value_name = "TOKEN")]
+        token: Option<String>,
+    },
+}
+
+#[tokio::main]
+async fn main() {
     install_panic_terminal_hook();
     let cli = Cli::parse();
     let output_format = match cli.output.as_deref() {
@@ -99,7 +117,14 @@ fn main() {
     let debug_enabled = should_debug(config.debug);
     let mut credentials = load_credentials(&config.config_dir);
 
-    let transport = HttpTransport;
+    let client = match build_http_client() {
+        Ok(c) => c,
+        Err(err) => {
+            eprintln!("failed to build HTTP client: {err}");
+            std::process::exit(1);
+        }
+    };
+    let transport = HttpTransport::new(client);
     debug_log(
         debug_enabled,
         &format!(
@@ -114,31 +139,69 @@ fn main() {
         Commands::Version => {
             println!("{}", run_version(&config));
         }
-        Commands::Health => match run_health(&transport, &config) {
+        Commands::Health => match run_health(&transport, &config).await {
             Ok(output) => println!("{}", output),
             Err(err) => {
                 eprintln!("{}", err);
                 std::process::exit(1);
             }
         },
+        Commands::Auth { command } => match command {
+            AuthCommands::Set { token } => {
+                let raw = match token {
+                    Some(value) => value,
+                    None => {
+                        let mut line = String::new();
+                        if let Err(err) = io::stdin().lock().read_line(&mut line) {
+                            eprintln!("failed to read token from stdin: {err}");
+                            std::process::exit(1);
+                        }
+                        line
+                    }
+                };
+                let trimmed = raw.trim();
+                if trimmed.is_empty() {
+                    eprintln!("error: token is empty (use --token or pipe one line on stdin)");
+                    std::process::exit(1);
+                }
+                credentials.access_token = Some(trimmed.to_string());
+                debug_log(
+                    debug_enabled,
+                    "auth set: access token written to credentials file",
+                );
+                if let Err(err) = save_credentials(&config.config_dir, &credentials) {
+                    eprintln!("failed to persist credentials: {err}");
+                    std::process::exit(1);
+                }
+                if matches!(config.output_format, OutputFormat::Text) {
+                    println!("access token saved");
+                } else {
+                    println!(
+                        "{}",
+                        serde_json::json!({"command":"auth set","ok":true,"output":"access token saved"})
+                    );
+                }
+                return;
+            }
+        },
         Commands::Chat {
             message,
             allow_restricted_tools,
-        } => {
-            match run_chat(
-                &transport,
-                &config,
-                &message,
-                &mut credentials,
-                allow_restricted_tools,
-            ) {
-                Ok(output) => println!("{}", output),
-                Err(err) => {
-                    eprintln!("{}", err);
-                    std::process::exit(1);
-                }
+        } => match run_chat(
+            &transport,
+            &config,
+            &message,
+            &mut credentials,
+            allow_restricted_tools,
+        )
+        .await
+        {
+            Ok(output) => println!("{}", output),
+            Err(err) => {
+                eprintln!("{}", err);
+                std::process::exit(1);
             }
-        }
+        },
     }
     if let Err(err) = save_credentials(&config.config_dir, &credentials) {
         eprintln!("failed to persist credentials: {}", err);
