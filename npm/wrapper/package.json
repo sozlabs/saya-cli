@@ -1,6 +1,6 @@
 {
   "name": "@sozlabs/saya-cli",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Thin CLI for soz-saya (installs a native binary via optionalDependencies)",
   "license": "Apache-2.0",
   "repository": {
@@ -14,11 +14,11 @@
     "bin/saya.js"
   ],
   "optionalDependencies": {
-    "@sozlabs/saya-cli-darwin-arm64": "0.1.1",
-    "@sozlabs/saya-cli-darwin-x64": "0.1.1",
-    "@sozlabs/saya-cli-linux-arm64": "0.1.1",
-    "@sozlabs/saya-cli-linux-x64": "0.1.1",
-    "@sozlabs/saya-cli-win32-x64": "0.1.1"
+    "@sozlabs/saya-cli-darwin-arm64": "0.1.2",
+    "@sozlabs/saya-cli-darwin-x64": "0.1.2",
+    "@sozlabs/saya-cli-linux-arm64": "0.1.2",
+    "@sozlabs/saya-cli-linux-x64": "0.1.2",
+    "@sozlabs/saya-cli-win32-x64": "0.1.2"
   },
   "engines": {
     "node": ">=18"

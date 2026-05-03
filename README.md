@@ -97,17 +97,19 @@ cargo build --release
 |--------|-------------|
 | `saya version` | Print CLI version. |
 | `saya health` | `GET {base-url}/health`. |
+| `saya auth set` | Save Bearer access token to the credentials file (see **Auth and session**). |
+| `saya auth set --token "<token>"` | Same as above; use for scripts (token may appear in shell history). |
 | `saya chat --message "…"` | Create or resume a conversation and send a user message; response arrives over **SSE** and is printed as it streams (text mode). |
 | `saya chat --allow-restricted-tools` | Opt-in for soz-saya restricted tools without a prompt (see **Restricted tools**). |
 
-Use `saya --help` and `saya chat --help` for flag details.
+Use `saya --help`, `saya auth --help`, and `saya chat --help` for flag details.
 
 ## Global flags
 
 | Flag | Meaning |
 |------|---------|
 | `--base-url <url>` | soz-saya base URL. |
-| `--timeout-ms <n>` | Connect / blocking HTTP timeout for non-stream calls; stream uses this as **connect** timeout. |
+| `--timeout-ms <n>` | Request timeout for `health` and create-conversation calls; SSE stream POST uses this as **connect** timeout only. |
 | `--output <text\|json>` | Text: stream tokens to stdout. JSON: buffer tokens and print one JSON object at the end. |
 | `--non-interactive` | No interactive prompts; restricted tools stay denied unless you set env/flag (see **Restricted tools**). |
 | `--debug` | Transport logs with **redacted** secrets (no raw `Authorization` values). |
@@ -149,7 +151,8 @@ Sensitive values are not printed in debug logs.
 
 ## Auth and session
 
-- `chat` expects a **Bearer** access token stored via the credentials file (see project tooling / docs for how you set the token in your setup).
+- `chat` expects a **Bearer** access token in the credentials file (`credentials.json` under the config directory).
+- Set the token without putting it in shell history: run `saya auth set` (omit `--token`) and type or pipe one line on stdin. For scripts: `saya auth set --token "<your-token>"` (may appear in shell history).
 - Without a token, `chat` exits with an error.
 - If `conversation_id` is omitted, the client creates a conversation (`POST /v1/conversations`) and persists the new id for the next run.
 - `channel_id` defaults to `terminal` unless overridden.
