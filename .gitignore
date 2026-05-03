@@ -6,6 +6,7 @@
 # Local env / secrets
 .env
 .env.*
+.local-saya/
 
 # IDE
 .idea/
