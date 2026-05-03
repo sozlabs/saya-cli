@@ -37,12 +37,20 @@ pub fn run_version(config: &CliConfig) -> String {
     )
 }
 
-pub fn run_health(transport: &dyn SayaTransport, config: &CliConfig) -> Result<String, String> {
-    let out = transport.health(&config.base_url, config.timeout, config.debug)?;
+pub async fn run_health(
+    transport: &dyn SayaTransport,
+    config: &CliConfig,
+) -> Result<String, String> {
+    let out = transport
+        .health(&config.base_url, config.timeout, config.debug)
+        .await?;
     Ok(render(config, "health", &out))
 }
 
-fn resolve_allow_restricted(config: &CliConfig, cli_flag: bool) -> Result<Option<bool>, String> {
+async fn resolve_allow_restricted(
+    config: &CliConfig,
+    cli_flag: bool,
+) -> Result<Option<bool>, String> {
     if cli_flag || config.allow_restricted_tools_opt_in {
         return Ok(Some(true));
     }
@@ -52,17 +60,21 @@ fn resolve_allow_restricted(config: &CliConfig, cli_flag: bool) -> Result<Option
     if !std::io::stdin().is_terminal() {
         return Ok(None);
     }
-    let yes = dialoguer::Confirm::new()
-        .with_prompt(
-            "Allow restricted tools for this message? (write-like tools on the soz-saya allowlist)",
-        )
-        .default(false)
-        .interact()
-        .map_err(|e| format!("confirm: {e}"))?;
+    let yes = tokio::task::spawn_blocking(|| {
+        dialoguer::Confirm::new()
+            .with_prompt(
+                "Allow restricted tools for this message? (write-like tools on the soz-saya allowlist)",
+            )
+            .default(false)
+            .interact()
+    })
+    .await
+    .map_err(|e| format!("confirm: {e}"))?
+    .map_err(|e| format!("confirm: {e}"))?;
     Ok(if yes { Some(true) } else { None })
 }
 
-pub fn run_chat(
+pub async fn run_chat(
     transport: &dyn SayaTransport,
     config: &CliConfig,
     message: &str,
@@ -82,7 +94,8 @@ pub fn run_chat(
         actor_id: config.actor_id.clone(),
         channel_id: config.channel_id.clone(),
     };
-    let allow_restricted_tools = resolve_allow_restricted(config, allow_restricted_tools_cli)?;
+    let allow_restricted_tools =
+        resolve_allow_restricted(config, allow_restricted_tools_cli).await?;
     let request = ChatRequest {
         base_url: config.base_url.clone(),
         message: message.to_string(),
@@ -97,7 +110,7 @@ pub fn run_chat(
         stream_retry_max_ms: config.stream_retry_max_ms,
         allow_restricted_tools,
     };
-    let out = transport.chat(&request)?;
+    let out = transport.chat(&request).await?;
     credentials.conversation_id = Some(out.conversation_id.clone());
     format_chat_output(config, &out)
 }
@@ -124,6 +137,7 @@ fn format_chat_output(config: &CliConfig, out: &ChatResult) -> Result<String, St
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::async_trait;
     use crate::config::OutputFormat;
     use crate::credentials::Credentials;
     use crate::transport::SayaTransport;
@@ -135,8 +149,9 @@ mod tests {
         calls: Mutex<Vec<String>>,
     }
 
+    #[async_trait]
     impl SayaTransport for MockTransport {
-        fn health(
+        async fn health(
             &self,
             base_url: &str,
             _timeout: Duration,
@@ -149,7 +164,10 @@ mod tests {
             Ok("ok".to_string())
         }
 
-        fn chat(&self, request: &ChatRequest) -> Result<crate::transport::ChatResult, String> {
+        async fn chat(
+            &self,
+            request: &ChatRequest,
+        ) -> Result<crate::transport::ChatResult, String> {
             self.calls
                 .lock()
                 .map_err(|_| "lock poisoned".to_string())?
@@ -202,10 +220,10 @@ mod tests {
         cfg
     }
 
-    #[test]
-    fn health_routes_through_transport() {
+    #[tokio::test]
+    async fn health_routes_through_transport() {
         let transport = MockTransport::default();
-        let result = match run_health(&transport, &test_config()) {
+        let result = match run_health(&transport, &test_config()).await {
             Ok(value) => value,
             Err(err) => panic!("{err}"),
         };
@@ -217,14 +235,14 @@ mod tests {
         assert_eq!(calls.as_slice(), ["health:http://127.0.0.1:3010"]);
     }
 
-    #[test]
-    fn chat_routes_through_transport() {
+    #[tokio::test]
+    async fn chat_routes_through_transport() {
         let transport = MockTransport::default();
         let mut creds = Credentials {
             access_token: Some("secret".to_string()),
             conversation_id: None,
         };
-        let result = match run_chat(&transport, &test_config(), "hello", &mut creds, false) {
+        let result = match run_chat(&transport, &test_config(), "hello", &mut creds, false).await {
             Ok(value) => value,
             Err(err) => panic!("{err}"),
         };
@@ -240,8 +258,8 @@ mod tests {
         assert_eq!(creds.conversation_id.as_deref(), Some("generated-cid"));
     }
 
-    #[test]
-    fn chat_uses_conversation_id_from_config_when_present() {
+    #[tokio::test]
+    async fn chat_uses_conversation_id_from_config_when_present() {
         let transport = MockTransport::default();
         let mut creds = Credentials {
             access_token: Some("secret".to_string()),
@@ -253,7 +271,9 @@ mod tests {
             "hello",
             &mut creds,
             false,
-        ) {
+        )
+        .await
+        {
             Ok(value) => value,
             Err(err) => panic!("{err}"),
         };
@@ -268,14 +288,14 @@ mod tests {
         );
     }
 
-    #[test]
-    fn chat_fails_without_token() {
+    #[tokio::test]
+    async fn chat_fails_without_token() {
         let transport = MockTransport::default();
         let mut creds = Credentials {
             access_token: None,
             conversation_id: None,
         };
-        let result = run_chat(&transport, &test_config(), "hello", &mut creds, false);
+        let result = run_chat(&transport, &test_config(), "hello", &mut creds, false).await;
         assert!(result.is_err());
         let calls = match transport.calls.lock() {
             Ok(value) => value,
